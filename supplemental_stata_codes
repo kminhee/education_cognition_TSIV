@@ -1,0 +1,358 @@
+*-------------------------------------------------------------------------------------
+* REGARDS Education and Cognition Sensitivity/falsification tests
+*	(1) Overidentification test by race
+* (2) E-value for reduced form analysis
+* (3) Compare the demographic characteristics of two data sources 
+* (4) Bootstrap 
+*	(5) Simulation for potential differential error bias
+*	(6) Graphical examination of monotonicity
+*-------------------------------------------------------------------------------------
+
+*------------------------------------------------------------------
+* 
+* (1) Overidentification test by race
+* 
+*------------------------------------------------------------------
+
+// Create policy predicted education (PPYED) measure using one pair of policy instruments. 
+// Each measure is being merged to REGARDS data for the second stage analysis (and to get IV estimate) 
+
+
+* USING COMPYRS AND CHILDCOM
+
+forvalues i= 1(1)2 {
+
+reg schlyrs pcomyrs   pchildcom  birthyrsp1 birthyrsp2 birthyrsp3 birthyrsp4 ///
+i.sex i.FIPS if age25==1 & race ==`i'
+predict pschlyrs_1a_`i'
+
+* center predicted variables 
+
+gen policy1a_`i’ =pschlyrs_1a_`i’ -12
+
+
+* create PPYED exposure data per state, birth year, and race combiation (remove duplicates)
+browse FIPS birthyr race  
+* keep variables per state, year, race   
+sort  FIPS birthyr race sex
+duplicates drop FIPS birthyr race, force
+
+drop sex 
+				
+gen fips_state_ag6= FIPS 
+gen black = 0 
+replace black = 1 if race == 2
+keep if race == `i'
+save "Census19801990nocontractQualCSL_PPYED_noduplicates_eachpolicy_stratify_`i'.dta", replace
+}
+
+// Caculate Sargan statistics (x^2 distribution with J-1 df; J= number of instrument)
+// Residuals from the IV model were saved and used as an outcome with two policy instruments (e.g., CSL and CSLw)as predictors. 
+// refererence: https://www.stata.com/statalist/archive/2009-12/msg00300.html
+
+forvalues i= 1(1)2 {
+use "REGARDS_Education_Memory_2020_mortality_20230110.dta", clear
+
+	sort fips_state_ag6 birthyr black 
+	merge m:1 fips_state_ag6 birthyr black using "Census19801990nocontractQualCSL_PPYED_noduplicates_eachpolicy_stratify_`i'.dta", force update
+
+drop if _merge==1 | _merge==2
+drop _merge
+
+keep if race == `i'
+
+* 1a
+ 
+mixed cog_mean i.PE c.time##(c.policy1a_`i' female##c.age_65 female##c.age_65_2  i.base_year  i.fips_state_ag6) || id: time 
+predict double eps, res
+
+reg eps pcomyrs  pchildcom  
+
+predict double yhat, xb
+gen double syhat2 = yhat^2 
+su syhat2, mean
+loc syhat2= `r(sum)'
+gen double seps2 = eps^2 
+su seps2, mean
+scalar ur2 = `syhat2'/r(sum)
+di e(N)*ur2
+
+ 
+*-------------------------------------------
+* 
+* (2) E-value for reduced form analysis
+*
+*-------------------------------------------
+
+use "dir/REGARDS_PPYED.dta", clear
+
+// standardize the policy variable
+/* sum pcomyrs pchildcom pSt_TL_AA_6 pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6  if count_id==1
+
+gen stdpol1 = (pcomyrs - 8.969158)/0.8530035
+gen stdpol2 = (pchildcom -  7.89917)/0.9239449 
+gen stdpol3 = (pSt_TL_AA_6 - 170.2527)/14.19064 
+gen stdpol4 = (pSt_TL_Wh_6 - 175.9567)/6.772807 
+gen stdpol5 = (pSt_pAtt_AA_6 - .8481636)/0.0492809
+gen stdpol6 = (pSt_pAtt_Wh_6 - .8592331)/0.0394269
+gen stdpol7 = (pSt_STr_AA_6 - 32.53953)/6.481738 
+gen stdpol8 = (pSt_STr_Wh_6 - 28.63751)/2.92394 
+
+* all policies 
+mixed cog_mean i.PE c.time##(c.stdpol1 ///
+	c.stdpol2 ///
+	c.stdpol3 ///
+	c.stdpol4 ///
+	c.stdpol5 ///
+	c.stdpol6 ///
+	c.stdpol7 ///
+	c.stdpol8  ///
+	i.black##c.age_65 i.black##c.age_65_2 i.female##c.age_65 i.female##c.age_65_2  i.base_year  i.fips_state_ag6) || id: time 
+
+
+*------------------------------------------------------------------
+* 
+* (3) Compare the demographic characteristics of two data sources
+*
+*------------------------------------------------------------------
+
+// IV estimates may be bias if the effect of the instruments on the endogenous variable differs between the Census and REGARDS data; show structural relations between policy variables and demographic variables across two datasets. 
+
+use "Census19801990nocontractQualCSL.dta", clear
+sum	pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if age25==1 
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race== 2 & sex == 1 & age25==1 
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race== 2 & sex == 2 & age25==1 
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race== 1 & sex == 1 & age25==1 
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race== 1 & sex == 2 & age25==1 
+
+
+use “REGARDS_PPYED.dta", clear
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if count_id==1 
+
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race_gender == 1 & count_id==1 
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race_gender == 2 & count_id==1
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race_gender == 3 & count_id==1
+sum pcomyrs pchildcom ///
+	pSt_TL_AA_6  pSt_TL_Wh_6 pSt_pAtt_AA_6 pSt_pAtt_Wh_6 pSt_STr_AA_6 pSt_STr_Wh_6 if race_gender == 4 & count_id==1
+
+
+*-------------------------------
+*
+* (4) bootstrap 
+*
+*-------------------------------
+
+* create empty data sets to fill with values 
+clear 
+
+gen coefs = . 
+save coefs.dta, replace
+
+clear
+gen level = . 
+gen change = . 
+
+save statefe_coefs.dta, replace
+
+
+* use censusboot data that generated 100 PPYEds values using 100 random samples from Census]
+ 
+foreach b2 of numlist 1/100 {
+	use "$dir\censusboot.dta", clear
+		
+	sort fips_state_ag6 birthyr black 
+	
+
+	merge 1:m fips_state_ag6 birthyr black using "$dir\RG_CogTraj_Census19801990contractedQualCSL_PPYED.dta"
+
+	set seed `b2'
+	bsample, cluster(id) 
+	foreach b1 of numlist 1/100 {
+mixed cog_mean i.PE c.time##(c.PPYED`b1' black##c.age_65 black##c.age_65_2 female##c.age_65 female##c.age_65_2  i.base_year  i.fips_state_ag6) || id: time 
+		
+		preserve 
+			use statefe_coefs.dta, clear
+			local nobs = `b1' + ((`b2'-1)*10)
+			set obs `nobs'
+			
+			replace level = _b[PPYED`b1'] in `nobs' 
+			replace change = _b[c.time#c.PPYED`b1'] in `nobs' 
+			
+			save statefe_coefs, replace 
+		
+		restore
+		 
+		display "$S_TIME S_DATE"  
+		}
+		
+	}
+*** Calculate effect estimates/SD based on TSIV samples ***
+use statefe_coefs, clear 
+
+	outreg2 using "TSIVresults.xls", excel sum(detail) append eqkeep(mean sd)
+
+*** 2.5% and 97.5% percentiles c(0.025, 0.975), so generate 95% confidence interval ***
+use statefe_coefs, clear 
+keep in 250/9750 
+drop in 2/9500
+
+gen level_ci = . 
+replace level_ci = 5 in 1 
+replace level_ci = 95 in 2
+
+gen change_ci = . 
+replace change_ci = 5 in 1 
+replace change_ci = 95 in 2
+
+save confint, replace
+export excel confint.xlsx
+
+
+*---------------------------------------------------------
+*
+* (5) Simulation for potential differential error bias
+*
+*---------------------------------------------------------
+
+* outcome: normal distribution 
+* Random half (average education policy environment): Among the ones with the average value of the instrument people responded true education 
+* Random half (favorable education policy environment): Among the ones with a high value of instrument half people responded true education vs. the other half reported +1 year of education than true education (i.e., differential error). 
+
+
+// Creating a pseudo-random dataset
+
+// Set seed to permit later replication
+set seed 94158
+
+// Define number of observations in dataset
+set obs 2000		// creates an empty dataset with 200 observations and no variables
+
+// Create a unique identifier for each observation
+gen id = _n
+
+
+// Generate IV data source: http://www.fight-entropy.com/2012/04/why-visualizing-instrumental-variables.html	
+
+//generate the instrument (z= PPYED)
+gen z = runiform() //returns an r × c real matrix containing uniformly distributed random variates over (0, 1).
+
+//generate noise terms
+gen e1 = rnormal()*.5
+gen e2 = rnormal()*.5
+
+//generate the variable to be instrumented for (x= education)
+gen x = 2*z + e1
+
+//generate the outcome (y= cognitive performance)
+gen y = 1*x + e2
+
+regress y x
+ivregress 2sls y (x = z)
+
+
+// Give a number (policygrp = 1 for those in favorable education policy enviroment; 2 for those in average policy enviroment)  
+
+gen policygrp = 1 if z >= .5
+replace policygrp = 0 if z < .5
+
+// Assign a random number for a half of favorable policy group who will be assigned to have a differential error
+/*For a fixed probability, say 50%*/
+
+gen difer = uniform() < .5 if policygrp == 1
+
+// Check whether this variable is not related to the outcome
+
+regress y difer
+
+// Generate the education with differential errors 
+
+gen x_difer = x 
+replace x_difer = x + 0.1 if difer == 1
+
+// Estimate education effect when differential measurement errors exist 
+
+regress y x_difer
+ivregress 2sls y (x_difer = z)
+
+	
+*-------------------------------------------------
+* 
+* (6) graphical test of monotonicity assumption 
+* 
+*-------------------------------------------------
+
+use "Census19801990nocontractQualCSL.dta", clear
+keep if age25==1 
+
+* Schooling CDF by Pocliy Measures (Black and White People Born XX-YY; Data From the 1970 and 1980 Census), Tertile of Each Policy Measure
+* create policy tertile measure
+xtile pcomyrs_tertile = pcomyrs, nquantiles(3)
+xtile pchildcom_tertile = pchildcom, nquantiles(3)
+xtile TL_AA_tertile = pSt_TL_AA_6, nquantiles(3) 
+xtile TL_Wh_tertile = pSt_TL_Wh_6, nquantiles(3)
+xtile pAtt_AA_tertile = pSt_pAtt_AA_6, nquantiles(3)
+xtile pAtt_Wh_tertile = pSt_pAtt_Wh_6,  nquantiles(3)
+xtile STr_AA_tertile = pSt_STr_AA_6,  nquantiles(3)
+xtile STr_Wh_tertile = pSt_STr_Wh_6, nquantiles(3) 
+
+label variable schlyrs "years of schooling" 
+label variable pcomyrs_tertile "Tertiles of CSL (Mandate years before drop)" 
+label variable pchildcom_tertile "Tertiles of CSL (Mandate years to obtain work permit)" 
+label variable TL_AA_tertile "Tertiles of term-length for Black people" 
+label variable TL_Wh_tertile "Tertiles of term-length for White people" 
+label variable pAtt_AA_tertile "Tertiles of attendance rate among Black people" 
+label variable pAtt_Wh_tertile "Tertiles of attendance rate among White people" 
+label variable STr_AA_tertile "Tertiles of student-teacher ratio among Black people" 
+label variable STr_Wh_tertile "Tertiles of student-teacher ratio among White people" 
+
+lab define blackracelabel 0 "Non-Hispanic White" 1 "Non-Hispanic Black", modify
+lab val nhblack blackracelabel
+
+distplot schlyrs, over(pcomyrs_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of mandated schooling years before drop out")
+	graph save pcomyrs_tertile_all, replace
+
+distplot schlyrs, over(pchildcom_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of mandated years before obtaining work permit")
+	graph save pchildcom_tertile_all, replace
+
+distplot schlyrs, over(TL_AA_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of term length for schools serving Black students")
+	graph save TL_AA_tertil_all, replace
+
+distplot schlyrs, over(TL_Wh_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of term length for schools serving for White students")
+	graph save TL_Wh_tertile_all, replace
+
+distplot schlyrs, over(pAtt_AA_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of attendance rate for schools serving Black students")
+	graph save pAtt_AA_tertile_all, replace
+
+distplot schlyrs, over(pAtt_Wh_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of attendance rate for schools serving White students")
+	graph save pAtt_Wh_tertile_all, replace
+
+distplot schlyrs, over(STr_AA_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of student-teacher ratio for schools serving Black students")
+	graph save STr_AA_tertile_all, replace
+
+distplot schlyrs, over(STr_Wh_tertile) scheme(s1color) yla( ,ang(h)) midpoint  by (nhblack, note("")) ///
+lpattern(dot solid dash) legend(order(1 "Low" 2 "Mid" 3 "High")) xtitle("Year of schooling") ///
+ttitle("Schooling C.D.F by tertiles of student-teacher ratio for schools serving White students")
+	graph save STr_Wh_tertile_all, replace

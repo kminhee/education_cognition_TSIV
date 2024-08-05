@@ -1,11 +1,11 @@
 *-------------------------------------------------------------------------------------
 * REGARDS Education and Cognition Sensitivity/falsification tests
-*	(1) Overidentification test by race
+* (1) Overidentification test by race
 * (2) E-value for reduced form analysis
 * (3) Compare the demographic characteristics of two data sources 
 * (4) Bootstrap 
-*	(5) Simulation for potential differential error bias
-*	(6) Graphical examination of monotonicity
+* (5) Simulation for potential differential error bias
+* (6) Graphical examination of monotonicity
 *-------------------------------------------------------------------------------------
 
 *------------------------------------------------------------------

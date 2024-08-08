@@ -31,7 +31,7 @@ predict pschlyrs_1a_`i'
 gen policy1a_`i’ =pschlyrs_1a_`i’ -12
 
 
-* create PPYED exposure data per state, birth year, and race combiation (remove duplicates)
+* create PPYED exposure data per state, birth year, and race combination (remove duplicates)
 browse FIPS birthyr race  
 * keep variables per state, year, race   
 sort  FIPS birthyr race sex
@@ -45,6 +45,8 @@ replace black = 1 if race == 2
 keep if race == `i'
 save "Census19801990nocontractQualCSL_PPYED_noduplicates_eachpolicy_stratify_`i'.dta", replace
 }
+
+* merge with REGARDS longitudinal data for mixed models
 
 // Caculate Sargan statistics (x^2 distribution with J-1 df; J= number of instrument)
 // Residuals from the IV model were saved and used as an outcome with two policy instruments (e.g., CSL and CSLw)as predictors. 
@@ -171,6 +173,7 @@ foreach b2 of numlist 1/100 {
 		
 	sort fips_state_ag6 birthyr black 
 	
+* merge with REGARDS longitudinal data for mixed models
 
 	merge 1:m fips_state_ag6 birthyr black using "$dir\RG_CogTraj_Census19801990contractedQualCSL_PPYED.dta"
 
